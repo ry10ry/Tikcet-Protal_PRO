@@ -1,0 +1,17 @@
+.env
+.env.*
+!.env.example
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+*.db
+*.db-*
+/logs/
+/MOMCC_Archive/
+/attachments/
+/backups/
+/ssl/certs/
+/ssl/portal-ip.txt
+/scripts/backup-logs/
+*.zip

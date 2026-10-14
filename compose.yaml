@@ -1,0 +1,78 @@
+name: momcc-prod
+x-service-logging: &service_logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+services:
+  db:
+    image: mysql:8.4
+    logging: *service_logging
+    environment:
+      MYSQL_DATABASE: servicedesk
+      MYSQL_USER: servicedesk
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?Set MYSQL_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD}
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+  web:
+    build: .
+    image: momcc-prod-app:0.1
+    logging: *service_logging
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - ./logs:/data/logs
+      - ${ARCHIVE_HOST_PATH:-./MOMCC_Archive}:/data/archive
+    environment: &app_env
+      DATABASE_URL: mysql+pymysql://servicedesk:${MYSQL_PASSWORD}@db/servicedesk?charset=utf8mb4
+      ADMIN_EMAIL: ${ADMIN_EMAIL:?Set ADMIN_EMAIL}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Set ADMIN_PASSWORD}
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
+      WAHA_ENABLED: ${WAHA_ENABLED:-false}
+      WAHA_URL: ${WAHA_URL:-}
+      WAHA_API_KEY: ${WAHA_API_KEY:-}
+      WAHA_SESSION: ${WAHA_SESSION:-default}
+      WAHA_GROUP_CHAT_ID: ${WAHA_GROUP_CHAT_ID:-}
+      PORTAL_URL: ${PORTAL_URL:-}
+      LOG_DIR: /data/logs
+      ARCHIVE_ROOT: /data/archive
+      ARCHIVE_ENABLED: ${ARCHIVE_ENABLED:-false}
+      ARCHIVE_PURGE_ENABLED: ${ARCHIVE_PURGE_ENABLED:-false}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=5)"]
+      interval: 10s
+      timeout: 6s
+      retries: 12
+      start_period: 30s
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+  scheduler:
+    build: .
+    image: momcc-prod-app:0.1
+    logging: *service_logging
+    command: ["python", "-m", "app.scheduler"]
+    environment:
+      <<: *app_env
+      LOG_SERVICE: scheduler
+    volumes:
+      - ./logs:/data/logs
+      - ${ARCHIVE_HOST_PATH:-./MOMCC_Archive}:/data/archive
+    depends_on:
+      db:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+    restart: unless-stopped
+volumes:
+  mysql_data:
+    external: true
+    name: momcc-prod_mysql_data

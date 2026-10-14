@@ -1,0 +1,48 @@
+> PROD v0.1: 首次安装请先按 README.md 执行 Setup-PROD.ps1；下文卷名仅适用于 PROD，不能操作 UAT 卷。
+
+# Protect the existing database volume
+
+The PROD database volume is named `momcc-prod_mysql_data`. Setup-PROD.ps1 creates it on a new computer, and compose.yaml marks it external, so Docker Compose down -v does not remove it. Container mounts remain mysql_data:/var/lib/mysql; no data migration or volume creation is needed.
+
+For an installation with local Compose edits, change only the bottom-level volume declaration:
+
+```yaml
+volumes:
+  mysql_data:
+    external: true
+    name: momcc-prod_mysql_data
+```
+
+Verify that the volume exists:
+
+```powershell
+docker volume inspect momcc-prod_mysql_data
+```
+
+Then apply without stopping or deleting volumes:
+
+```powershell
+docker compose -f compose.yaml -f compose.override.yaml -f compose.ssl.yaml config --quiet
+docker compose -f compose.yaml -f compose.override.yaml -f compose.ssl.yaml up -d
+```
+
+Do not create a new empty volume if inspect reports the volume missing; check the Docker context and actual deployment volume name first. All subsequent Compose commands must use the edited compose.yaml. Both PROD volume names are explicitly configured. compose.override.yaml also marks momcc-prod_attachments_data external, preserving the existing /data/attachments mount. Use both updated files to protect database and attachments from Compose down -v.
+
+To inspect the actual attachment mount:
+
+```powershell
+docker inspect (docker compose -f compose.yaml -f compose.override.yaml -f compose.ssl.yaml ps -q web) --format '{{json .Mounts}}'
+```
+
+After confirming the Name of the mount at /data/attachments, add external: true and name: <that exact Name> under attachments_data in compose.override.yaml. External volumes can still be deleted manually; retain database dumps and attachment backups.
+
+The confirmed attachment declaration in compose.override.yaml is:
+
+```yaml
+volumes:
+  attachments_data:
+    external: true
+    name: momcc-prod_attachments_data
+```
+
+Apply using the same config --quiet and up -d commands above. No database migration, volume creation or image rebuild is needed.
