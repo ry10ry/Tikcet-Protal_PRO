@@ -195,6 +195,9 @@ def view_ticket(session, user, ticket_id):
     ticket = session.get(Ticket, ticket_id)
     if not ticket:
         raise HTTPException(404, 'Ticket not found')
+    from app.fault_content import metadata
+    if user.role=='requester' and metadata(session,ticket.id)['visibility']=='Internal':
+        raise HTTPException(404,'Ticket not found')
     return ticket
 
 def record(session, ticket, user_id, kind, text, minutes=0):
@@ -301,6 +304,8 @@ def serialize(ticket, session):
     result = {c.name:getattr(ticket,c.name) for c in Ticket.__table__.columns}
     from app.archive import fields
     result['archive_state'],result['archive_path']=fields(session,'FAULT',ticket.id)
+    from app.fault_content import metadata
+    result.update(metadata(session,ticket.id))
     result['reference'] = f'MOMCC-{ticket.id:06d}'
     result['requester'] = session.get(User,ticket.requester_id).name
     result['assignee'] = session.get(User,ticket.assignee_id).name if ticket.assignee_id else 'Unassigned'
@@ -309,12 +314,15 @@ def serialize(ticket, session):
 @app.get('/api/tickets')
 def tickets(user: User=Depends(current_user), session: Session=Depends(db)):
     auto_close(session)
-    query = select(Ticket).order_by(Ticket.created_at.desc())
+    from app.fault_content import visible_filter
+    query = select(Ticket).where(visible_filter(user)).order_by(Ticket.created_at.desc())
     return [serialize(t,session) for t in session.scalars(query)]
 
 class TicketCreate(BaseModel):
     title: str = Field(min_length=3,max_length=200)
     description: str = Field(min_length=5,max_length=20000)
+    description_html: str = Field(default='',max_length=100000)
+    visibility: str | None = None
     category: str = Field(min_length=1,max_length=80)
     location: str = Field(default='',max_length=100)
     domain: str = Field(min_length=1,max_length=100)
@@ -327,9 +335,20 @@ def create_ticket(body: TicketCreate, user: User=Depends(current_user), session:
     if body.severity is None:body.severity=config['severities'][0]
     if body.severity not in config['severities'] or body.category not in config['categories'] or body.domain not in config['domains']:
         raise HTTPException(422,'Select a valid category, domain and severity')
-    ticket = Ticket(**body.model_dump(exclude={'attachments'}), requester_id=user.id)
+    from app.fault_content import FaultContent,sanitize
+    visibility=body.visibility or ('Public' if user.role=='requester' else 'Internal')
+    if visibility not in ('Public','Internal'):raise HTTPException(422,'Select Public or Internal visibility')
+    if user.role=='requester' and visibility!='Public':raise HTTPException(403,'Only Infra staff can create internal tickets')
+    formatted,plain=sanitize(body.description_html)
+    if formatted:
+        if len(plain)<5:raise HTTPException(422,'Description must contain at least 5 text characters')
+        body.description=plain
+    ticket = Ticket(**body.model_dump(exclude={'attachments','visibility','description_html'}), requester_id=user.id)
     session.add(ticket)
     session.flush()
+    session.add(FaultContent(ticket_id=ticket.id,visibility=visibility,description_html=formatted))
+    session.flush()
+    session.info.pop('fault_content',None)
     record(session,ticket,user.id,'Status','Fault reported — New')
     notify(session,ticket,'New fault report: '+ticket.title,[u.id for u in session.scalars(select(User).where(User.role.in_(['infra','infra_tl','infra_manager','admin'])))])
     enqueue_new_fault(session,ticket,user)
@@ -455,7 +474,8 @@ def action(ticket_id:int, body:Action, user:User=Depends(current_user), session:
 
 @app.get('/api/notifications')
 def notifications(user:User=Depends(current_user),session:Session=Depends(db)):
-    return [{'id':n.id,'ticket_id':n.ticket_id,'reference':f'MOMCC-{n.ticket_id:06d}','text':n.text,'read':bool(n.read_at),'created_at':n.created_at} for n in session.scalars(select(Notification).where(Notification.user_id==user.id).order_by(Notification.id.desc()).limit(100))]
+    from app.fault_content import visible_filter
+    return [{'id':n.id,'ticket_id':n.ticket_id,'reference':f'MOMCC-{n.ticket_id:06d}','text':n.text,'read':bool(n.read_at),'created_at':n.created_at} for n in session.scalars(select(Notification).join(Ticket,Ticket.id==Notification.ticket_id).where(Notification.user_id==user.id,visible_filter(user)).order_by(Notification.id.desc()).limit(100))]
 
 @app.post('/api/notifications/read',dependencies=[Depends(write_guard)])
 def read_notifications(user:User=Depends(current_user),session:Session=Depends(db)):
@@ -618,6 +638,8 @@ def delete_ticket(ticket_id:int,user:User=Depends(current_user),session:Session=
     for model in [WhatsAppOutbox,Notification,Entry]:
         for row in session.scalars(select(model).where(model.ticket_id==ticket_id)):
             session.delete(row)
+    from app.fault_content import FaultContent
+    session.query(FaultContent).filter(FaultContent.ticket_id==ticket.id).delete(synchronize_session=False)
     session.flush();session.delete(ticket);session.commit()
     for path in paths:
         path.unlink(missing_ok=True)
@@ -639,3 +661,5 @@ from app.waha import WhatsAppOutbox,enqueue_new_fault
 
 from app.archive import register as register_archive
 register_archive(app)
+
+from app.fault_content import FaultContent

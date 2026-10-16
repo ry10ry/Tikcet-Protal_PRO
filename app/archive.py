@@ -158,6 +158,9 @@ def capture(s,kind,row,date):
     owner_id=row.requester_id if kind=='FAULT' else row.owner_id
     content={c.name:getattr(row,c.name) for c in row.__table__.columns}
     if kind=='CR':content['content']=json.loads(row.content)
+    if kind=='FAULT':
+        from app.fault_content import metadata
+        content.update(metadata(s,row.id))
     records=[]
     for h in s.scalars(select(history).where(key==row.id).order_by(history.id)):
         item={c.name:getattr(h,c.name) for c in h.__table__.columns}
@@ -174,7 +177,7 @@ def write_file(path,data):
 
 def page(data,index=False):
     encoded=json.dumps(data,ensure_ascii=False,default=str).replace('<','\\u003c')
-    return ('''<!doctype html><meta charset="utf-8"><title>MOMCC Archive</title><style>body{font:15px Arial;margin:30px;color:#24324b}input,select,button{padding:10px;margin:5px}article{padding:16px;border:1px solid #ddd;margin:12px 0}pre{white-space:pre-wrap;overflow-wrap:anywhere}img{max-width:100%;max-height:500px}a{color:#2357d8}</style><h1>MOMCC Archive</h1><div id="controls"></div><main></main><script type="application/json" id="data">'''+encoded+'''</script><script>
+    return ('''<!doctype html><meta charset="utf-8"><title>MOMCC Archive</title><style>body{font:15px Arial;margin:30px;color:#24324b}input,select,button{padding:10px;margin:5px}article{padding:16px;border:1px solid #ddd;margin:12px 0}pre{white-space:pre-wrap;overflow-wrap:anywhere}img{max-width:100%;max-height:500px}a{color:#2357d8}table{border-collapse:collapse}td,th{border:1px solid #64748b;padding:8px}</style><h1>MOMCC Archive</h1><div id="controls"></div><main></main><script type="application/json" id="data">'''+encoded+'''</script><script>
 const data=JSON.parse(document.querySelector('#data').textContent),main=document.querySelector('main'),controls=document.querySelector('#controls');
 const node=(tag,text,parent)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;(parent||main).append(n);return n};
 const csvCell=v=>{let text=String(v??'');if(/^[=+@-]/.test(text.trimStart()))text=String.fromCharCode(39)+text;return '"'+text.replaceAll('"','""')+'"'};
@@ -184,7 +187,7 @@ if(Array.isArray(data)){
  controls.oninput=draw;document.querySelector('#csv').onclick=()=>{const columns=['kind','number','subject','owner','status','created','completed','description','scope','approval_records','attachments','attachment_paths','path'];const text=String.fromCharCode(65279)+[columns.map(csvCell).join(','),...shown.map(r=>columns.map(k=>csvCell(r[k])).join(','))].join(String.fromCharCode(13,10));const url=URL.createObjectURL(new Blob([text],{type:'text/csv;charset=utf-8'})),a=document.createElement('a');a.href=url;a.download='MOMCC-Archive.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};draw();
 }else{
  node('h2',data.summary.number+' — '+data.summary.subject);node('p',data.summary.status+' | '+data.summary.owner+' | Completed: '+data.summary.completed);
- node('h2','Record');const content=data.record.content||data.record;for(const [key,value] of Object.entries(content)){if(key==='severity'||key.startsWith('_')||value===null||value==='')continue;const a=node('article');node('strong',key.replaceAll('_',' '),a);node('pre',typeof value==='object'?JSON.stringify(value,null,2):String(value),a)}node('h2','Comments, approvals and history');for(const h of data.history){const a=node('article');node('strong',(h.actor||'')+' — '+(h.action||h.kind||''),a);node('p',String(h.created_at||'')+' UTC',a);node('pre',h.comment||h.reason||h.text||'',a);const details=node('details',undefined,a);node('summary','Full history and approval snapshot',details);node('pre',JSON.stringify(h,null,2),details)}
+ node('h2','Record');const content=data.record.content||data.record;for(const [key,value] of Object.entries(content)){if(key==='severity'||key.startsWith('_')||value===null||value==='')continue;const a=node('article');node('strong',key.replaceAll('_',' '),a);if(key==='description_html'){const view=node('div',undefined,a);view.innerHTML=value}else node('pre',typeof value==='object'?JSON.stringify(value,null,2):String(value),a)}node('h2','Comments, approvals and history');for(const h of data.history){const a=node('article');node('strong',(h.actor||'')+' — '+(h.action||h.kind||''),a);node('p',String(h.created_at||'')+' UTC',a);node('pre',h.comment||h.reason||h.text||'',a);const details=node('details',undefined,a);node('summary','Full history and approval snapshot',details);node('pre',JSON.stringify(h,null,2),details)}
  node('h2','Attachments');for(const f of data.attachments){const a=node('article');const link=node('a',f.filename+' — file '+f.id+(f.version?' / revision '+f.version:'')+(f.active===false?' / historical removed file':'')+' ('+f.size+' bytes)',a);link.href=f.path;if(f.preview){const img=node('img',undefined,a);img.loading='lazy';img.src=f.path;img.alt=f.filename}}node('p','Complete machine-readable record:');node('a','record.json').href='record.json';
 }</script>''').encode('utf-8')
 

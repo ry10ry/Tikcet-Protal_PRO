@@ -7,3 +7,7 @@
 PROD 配套改动：独立 Compose 项目/外部卷、首次安装与断点续装脚本、随机数据库密码、新管理员、新 CA/服务器证书、默认禁用 WAHA、网页 PROD v0.1 标记、数据库就绪检查及 scheduler/proxy 启动依赖。UAT 仓库和部署不受此版本更改。
 
 验证：SQLite 33 项、独立 MySQL 测试库 33 项通过；全新 Docker/MySQL、非 root web、scheduler、Nginx HTTPS、受信任 CA、特殊字符密码登录、空业务数据及一个管理员验证通过。PowerShell 全部语法检查通过，首次安装配置和重复安装保护通过模拟 Docker 调用验证。云端 Docker 构建容器无法直接解析 PyPI，因此容器验证使用主机下载的相同 requirements 依赖轮子离线构建；发布 Dockerfile 保留标准在线 pip 安装，新电脑构建需联网。实际 Windows 交互、USB、防火墙及客户端证书信任需安装后确认。
+
+## Approved Fault update — 16 October 2026 (version remains 0.1)
+
+Promoted Public/Internal Fault visibility, seven-line WhatsApp alerts, safe pasted table descriptions, enlarged reporting window and restored grey placeholder from UAT. Details and existing-installation commands: FAULT-PROD-UPDATE-20261016.md. PROD configuration, health endpoint, UI environment label and stored business data are preserved. Initial v0.1 tag remains unchanged; main contains this approved update.

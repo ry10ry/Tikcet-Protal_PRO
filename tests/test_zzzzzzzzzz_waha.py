@@ -27,7 +27,8 @@ def test_waha_only_new_fault_transaction_delivery_retry_and_delete(monkeypatch):
   with Session(engine) as s:
    row=s.scalar(select(WhatsAppOutbox));queue_id=row.id
    assert row.status=='pending' and row.chat_id=='123456@g.us'
-   assert 'New Fault Ticket' in row.text and f'MOMCC-{id:06d}' in row.text and 'https://portal.test' in row.text
+   assert 'New Fault Ticket' in row.text and f'MOMCC-{id:06d}' in row.text and 'https://portal.test' not in row.text
+   assert len(row.text.splitlines())==7 and 'Test issue description' not in row.text
   admin.post(p+'/actions',json=dict(action='assign'),headers=H)
   requester.post(p+'/actions',json=dict(action='note',text='Additional details'),headers=H)
   admin.post(p+'/actions',json=dict(action='vendor',text='Vendor investigation'),headers=H)

@@ -6,10 +6,10 @@
 
 1. 安装 Docker Desktop，启用 WSL2 / Linux containers，启动并等待 Docker 就绪。安装 Git（可选）；构建镜像需要互联网。
 2. 为电脑设置固定局域网 IPv4（或 DHCP 地址保留）。记录 `ipconfig` 中实际网卡的 IPv4；不要填 UAT IP、127.0.0.1 或 Docker 虚拟网卡地址。
-3. 下载本仓库的 **v0.1** 标签 ZIP 并解压到本地目录，例如 `C:\MOMCC-ServiceDesk-PROD`。也可用 Git：
+3. 下载本仓库的 **main 分支最新 ZIP**（界面版本仍为 v0.1） 并解压到本地目录，例如 `C:\MOMCC-ServiceDesk-PROD`。也可用 Git：
 
 ```powershell
-git clone --branch v0.1 https://github.com/ry10ry/Tikcet-Protal_PRO.git C:\MOMCC-ServiceDesk-PROD
+git clone --branch main https://github.com/ry10ry/Tikcet-Protal_PRO.git C:\MOMCC-ServiceDesk-PROD
 cd C:\MOMCC-ServiceDesk-PROD
 powershell -NoProfile -ExecutionPolicy Bypass -File .\Setup-PROD.ps1
 ```
@@ -48,7 +48,7 @@ docker compose -f compose.yaml -f compose.override.yaml -f compose.ssl.yaml logs
 docker compose -f compose.yaml -f compose.override.yaml -f compose.ssl.yaml up -d --build --force-recreate web scheduler proxy
 ```
 
-不要用新的包覆盖本机 `.env`、`ssl/certs`、`MOMCC_Archive`、`logs`；不要对已运行系统重新执行首次安装。先在 UAT 测试，再在本仓库发布新标签。GitHub 默认分支 main，首版标签 v0.1；界面及 `/api/health` 显示 PROD v0.1。`/api/health` 同时检查数据库连接。它不显示凭证或业务数据。
+不要用新的包覆盖本机 `.env`、`ssl/certs`、`MOMCC_Archive`、`logs`；不要对已运行系统重新执行首次安装。先在 UAT 测试，再在本仓库发布新标签。GitHub 默认分支 main 包含已批准的最新更新；首版标签 v0.1 保留初次发布快照，不移动旧标签；界面及 `/api/health` 显示 PROD v0.1。`/api/health` 同时检查数据库连接。它不显示凭证或业务数据。
 
 ## 独立存储和备份
 

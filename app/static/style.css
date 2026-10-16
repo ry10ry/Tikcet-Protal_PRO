@@ -18,3 +18,14 @@ button.stat{text-align:left;font-weight:400}.sInprogress,.sInProgress{background
 .workflow-stage{border:1px solid #dce3ee;border-radius:8px;padding:16px;margin:16px 0}.workflow-stage legend{font-weight:600}
 
 .sPendingrdParty{background:#fff4dc;color:#926418}
+
+/* Fault reporting and pasted table layout. */
+#createDialog{width:min(1100px,94vw);max-width:94vw;max-height:92vh;overflow:auto}
+#faultDescriptionEditor{min-height:300px;max-height:55vh;overflow:auto;border:1px solid #94a3b8;border-radius:8px;padding:14px;background:white;white-space:pre-wrap;overflow-wrap:anywhere}
+#faultDescriptionEditor:focus{outline:2px solid #2357d8;outline-offset:2px}
+#faultDescriptionEditor table,#description table{border-collapse:collapse;white-space:normal;min-width:240px}
+#faultDescriptionEditor td,#faultDescriptionEditor th,#description td,#description th{border:1px solid #64748b;padding:8px;min-width:60px;vertical-align:top}
+#description{overflow-x:auto}
+@media(max-width:650px){#createDialog{padding:16px}#faultDescriptionEditor{min-height:220px}}
+
+#faultDescriptionEditor[data-empty="true"]::before{content:attr(data-placeholder);color:#6b7280;pointer-events:none;float:left;height:0;white-space:normal}

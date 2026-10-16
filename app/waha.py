@@ -33,12 +33,10 @@ def enabled():return os.environ.get('WAHA_ENABLED','false').lower()=='true'
 def enqueue_new_fault(session,ticket,user):
     if not enabled():return
     from app.cr_email import singapore_time
-    portal=os.environ.get('PORTAL_URL','').rstrip('/')
-    lines=['*New Fault Ticket*',f'Number: MOMCC-{ticket.id:06d}',
-        'Subject: '+ticket.title,'Category: '+ticket.category,'Domain: '+ticket.domain,
-        'Raised by: '+user.name,'Reported: '+singapore_time(ticket.created_at),
-        '',ticket.description[:1000]]
-    if portal:lines+=['','Portal: '+portal]
+    one_line=lambda value:' '.join(str(value).split())
+    lines=['New Fault Ticket',f'Number: MOMCC-{ticket.id:06d}',
+        'Subject: '+one_line(ticket.title),'Category: '+one_line(ticket.category),'Domain: '+one_line(ticket.domain),
+        'Raised by: '+one_line(user.name),'Reported: '+singapore_time(ticket.created_at)]
     session.add(WhatsAppOutbox(ticket_id=ticket.id,
         chat_id=os.environ.get('WAHA_GROUP_CHAT_ID','').strip(),
         session_name=os.environ.get('WAHA_SESSION','default').strip() or 'default',
@@ -73,7 +71,7 @@ def process_outbox(engine,limit=10):
             claimed=session.execute(update(WhatsAppOutbox).where(WhatsAppOutbox.id==row.id,condition).values(status='sending',lease_token=token,attempts=WhatsAppOutbox.attempts+1,next_attempt_at=due+timedelta(minutes=3)))
             if claimed.rowcount!=1:session.rollback();continue
             session.refresh(row)
-            id,attempts,chat_id,session_name,text=row.id,row.attempts,row.chat_id or fallback_group,row.session_name,row.text
+            id,attempts,chat_id,session_name,text=row.id,row.attempts,row.chat_id or fallback_group,row.session_name,'\n'.join(row.text.splitlines()[:7]).replace('*New Fault Ticket*','New Fault Ticket',1)
             session.commit()
         error=None
         try:
