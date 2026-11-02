@@ -11,3 +11,11 @@ PROD 配套改动：独立 Compose 项目/外部卷、首次安装与断点续�
 ## Approved Fault update — 16 October 2026 (version remains 0.1)
 
 Promoted Public/Internal Fault visibility, seven-line WhatsApp alerts, safe pasted table descriptions, enlarged reporting window and restored grey placeholder from UAT. Details and existing-installation commands: FAULT-PROD-UPDATE-20261016.md. PROD configuration, health endpoint, UI environment label and stored business data are preserved. Initial v0.1 tag remains unchanged; main contains this approved update.
+
+## Approved Engineer assignment WhatsApp update — 2 November 2026 (version remains 0.1)
+
+Promoted UAT commit `5a8a54d` after user acceptance. Successful Fault Engineer assignments now queue a WhatsApp notification containing the ticket number, title and assigned Engineer, using the existing WAHA session and group. Failed assignments do not queue a message; delivery uses the existing scheduler retry mechanism. Reassignment and self-assignment also notify. The new `whatsapp_assignment_outbox` table is created automatically on web startup; existing queue tables and business records are retained.
+
+Validation: 35 SQLite integration tests passed, including PRO bootstrap, assignment rollback, message contents, group/session reuse, delivery, reassignment, disabled integration and deletion cleanup. WAHA delivery is mocked in automated tests; the user confirmed the UAT test passed. Production host deployment and actual group receipt require updating the server and restarting web/scheduler. Version and the initial v0.1 tag remain unchanged.
+
+Existing installations: back up the database, pull this repository's main branch, then use the existing Compose configuration to rebuild and recreate web and scheduler. Preserve the current .env, external volumes and WAHA settings. Do not rerun first-install setup or recreate volumes. See WHATSAPP-WAHA.md for the deployment command.

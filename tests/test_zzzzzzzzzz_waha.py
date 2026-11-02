@@ -4,11 +4,11 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select,func
 from sqlalchemy.orm import Session
 from app.main import app,engine,now
-from app.waha import WhatsAppOutbox,process_outbox
+from app.waha import WhatsAppOutbox,WhatsAppAssignmentOutbox,process_outbox
 from test_services import H,login
 
 
-def test_waha_only_new_fault_transaction_delivery_retry_and_delete(monkeypatch):
+def test_waha_fault_transaction_delivery_retry_and_delete(monkeypatch):
  import app.waha as waha
  monkeypatch.setenv('WAHA_ENABLED','true');monkeypatch.setenv('WAHA_URL','http://waha.test:3000')
  monkeypatch.setenv('WAHA_API_KEY','test-key-never-use-in-production')
@@ -42,7 +42,7 @@ def test_waha_only_new_fault_transaction_delivery_retry_and_delete(monkeypatch):
   # Make this delivery explicitly due rather than depending on test speed.
   with Session(engine) as s:
    s.get(WhatsAppOutbox,queue_id).next_attempt_at=now()-timedelta(seconds=1);s.commit()
-  assert process_outbox(engine)==1
+  assert process_outbox(engine)==2
   with Session(engine) as s:
    row=s.get(WhatsAppOutbox,queue_id)
    assert row.status=='pending' and row.attempts==1 and row.next_attempt_at>now()
@@ -77,3 +77,46 @@ def test_waha_http_payload_and_acknowledgement(monkeypatch):
  assert req.full_url=='http://waha.test:3000/api/sendText' and timeout==10
  assert req.get_header('X-api-key')=='fake-key'
  assert json.loads(req.data)==dict(session='default',chatId='123@g.us',text='New Fault Ticket',linkPreview=False)
+
+
+def test_assignment_notification_transaction_group_reassignment_and_disabled(monkeypatch):
+ import app.waha as waha
+ monkeypatch.setenv('WAHA_ENABLED','false')
+ with TestClient(app) as admin,TestClient(app) as requester:
+  login(admin,'admin@example.com');login(requester,'tm@example.com')
+  config=admin.get('/api/settings').json()
+  body=dict(title='Assign notification',description='Issue',category=config['categories'][0],domain=config['domains'][0])
+  ticket=requester.post('/api/tickets',json=body,headers=H).json()
+  p='/api/tickets/'+str(ticket['id'])
+  monkeypatch.setenv('WAHA_ENABLED','true')
+  monkeypatch.setenv('WAHA_GROUP_CHAT_ID','123456@g.us')
+  monkeypatch.setenv('WAHA_SESSION','existing-session')
+  monkeypatch.setenv('WAHA_URL','http://waha.test:3000')
+  monkeypatch.setenv('WAHA_API_KEY','test-key-never-use-in-production')
+  def rows():
+   with Session(engine) as s:return s.scalars(select(WhatsAppAssignmentOutbox).where(WhatsAppAssignmentOutbox.ticket_id==ticket['id'])).all()
+  assert requester.post(p+'/actions',json={'action':'assign'},headers=H).status_code==403
+  assert admin.post(p+'/actions',json={'action':'assign','assignee_id':999999},headers=H).status_code==422
+  assert admin.post(p+'/actions',json={'action':'assign','severity':'not-a-severity'},headers=H).status_code==422
+  assert admin.post(p+'/actions',json={'action':'assign','attachments':[{'filename':'bad.txt','data':'!'}]},headers=H).status_code==422
+  assert not rows()
+  assert admin.post(p+'/actions',json={'action':'assign'},headers=H).status_code==200
+  row=rows()[0]
+  assert row.text=='\n'.join(['Fault Ticket Assigned',f"Number: MOMCC-{ticket['id']:06d}",'Subject: Assign notification','Engineer: ServiceDesk Administrator'])
+  assert (row.chat_id,row.session_name)==('123456@g.us','existing-session')
+  calls=[]
+  monkeypatch.setattr(waha,'send_text',lambda *args:calls.append(args))
+  with Session(engine) as s:
+   s.get(WhatsAppAssignmentOutbox,row.id).next_attempt_at=now()-timedelta(seconds=1);s.commit()
+  assert process_outbox(engine)==1 and process_outbox(engine)==0
+  assert calls[0][2:]==('existing-session','123456@g.us',row.text)
+  # Every successful assign action, including assigning the same Engineer again, is an event.
+  engineer=next(u for u in admin.get('/api/users').json() if u['email']=='infra@example.com')
+  for _ in range(2):
+   assert admin.post(p+'/actions',json={'action':'assign','assignee_id':engineer['id']},headers=H).status_code==200
+  assert len(rows())==3 and all('Engineer: '+engineer['name'] in r.text for r in rows()[1:])
+  monkeypatch.setenv('WAHA_ENABLED','false')
+  assert admin.post(p+'/actions',json={'action':'assign'},headers=H).status_code==200
+  assert len(rows())==3
+  assert admin.post(p+'/delete',json={},headers=H).status_code==200
+  assert not rows()

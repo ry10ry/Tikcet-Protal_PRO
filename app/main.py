@@ -448,6 +448,7 @@ def action(ticket_id:int, body:Action, user:User=Depends(current_user), session:
                     raise HTTPException(422,'Invalid severity')
                 ticket.severity = body.severity
             text = 'Assigned to '+assignee.name
+            enqueue_assignment(session,ticket,assignee)
         elif a == 'decline':
             if ticket.status != 'New' or not text:
                 raise HTTPException(422,'Only new tickets can be declined; reason required')
@@ -635,7 +636,7 @@ def delete_ticket(ticket_id:int,user:User=Depends(current_user),session:Session=
     for row in session.scalars(select(Attachment).where(Attachment.ticket_id==ticket_id)):
         paths.append(UPLOAD_DIR/row.storage_name);session.delete(row)
     session.flush()
-    for model in [WhatsAppOutbox,Notification,Entry]:
+    for model in [WhatsAppAssignmentOutbox,WhatsAppOutbox,Notification,Entry]:
         for row in session.scalars(select(model).where(model.ticket_id==ticket_id)):
             session.delete(row)
     from app.fault_content import FaultContent
@@ -657,7 +658,7 @@ from app.internal_views import register_internal_views
 register_internal_views(app)
 
 # Register the durable WhatsApp queue before metadata is created at startup.
-from app.waha import WhatsAppOutbox,enqueue_new_fault
+from app.waha import WhatsAppOutbox,WhatsAppAssignmentOutbox,enqueue_new_fault,enqueue_assignment
 
 from app.archive import register as register_archive
 register_archive(app)
