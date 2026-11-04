@@ -28,7 +28,7 @@ def test_workflow_and_permissions():
         tid=r.json()['id'];path=f'/tickets/{tid}/actions'
         assert other.get(f'/api/tickets/{tid}').status_code==200
         assert any(t['id']==tid for t in other.get('/api/tickets').json())
-        assert post(other,path,{'action':'note','text':'Unauthorized edit'}).status_code==403
+        assert post(other,path,{'action':'note','text':'Shared reply'}).status_code==200
         assert post(requester,path,{'action':'assign'}).status_code==403
         assert post(admin,path,{'action':'resolve','text':'Fixed'}).status_code==422
         assert post(admin,path,{'action':'assign'}).json()['status']=='In Progress'
@@ -37,7 +37,7 @@ def test_workflow_and_permissions():
         assert post(admin,path,{'action':'hold','text':'Awaiting endpoint team'}).status_code==403
         assert post(admin,path,{'action':'information','text':'Please provide logs'}).json()['status']=='Additional Information Requested'
         assert admin.get('/api/settings').json()['status_labels']['Additional Information Requested']=='Pending Customer'
-        assert post(other,path,{'action':'note','text':'Other requester'}).status_code==403
+        assert post(other,path,{'action':'note','text':'Other requester'}).status_code==200
         assert post(admin,path,{'action':'note','text':'Waiting'}).json()['status']=='Additional Information Requested'
         assert post(requester,path,{'action':'note','text':'Additional details provided'}).status_code==200
         assert requester.get(f'/api/tickets/{tid}').json()['status']=='In Progress'
@@ -96,12 +96,14 @@ def test_settings_attachments_users_and_singapore_report():
         assert post(requester,'/settings',config).status_code==403
         assert post(admin,'/settings',config).status_code==200
         body={'title':'SGT boundary ticket','description':'Attachment test','category':'Test category','domain':'PROD','severity':'Urgent','attachments':[{'filename':'test.txt','data':base64.b64encode(b'hello attachment').decode()}]}
-        result=post(requester,'/tickets',body);assert result.status_code==200
+        assert post(requester,'/tickets',body).status_code==403
+        result=post(requester,'/tickets',{**body,'attachments':[]});assert result.status_code==200
+        assert post(admin,'/tickets/'+str(result.json()['id'])+'/actions',{'action':'note','text':'Initial attachment','attachments':body['attachments']}).status_code==200
         tid=result.json()['id']
         detail=requester.get(f'/api/tickets/{tid}').json();aid=detail['attachments'][0]['id']
         assert requester.get(f'/api/attachments/{aid}').content==b'hello attachment'
         assert other.get(f'/api/attachments/{aid}').content==b'hello attachment'
-        assert post(other,f'/tickets/{tid}/actions',{'action':'note','text':'Unauthorized reply'}).status_code==403
+        assert post(other,f'/tickets/{tid}/actions',{'action':'note','text':'Shared reply'}).status_code==200
         assert TestClient(app).get(f'/api/attachments/{aid}').status_code==401
         assert post(admin,f'/tickets/{tid}/actions',{'action':'assign'}).status_code==200
         assert post(admin,f'/tickets/{tid}/actions',{'action':'note','text':'Attached diagnosis','attachments':[{'filename':'diagnosis.txt','data':base64.b64encode(b'diagnosis').decode()}]}).status_code==200
@@ -109,7 +111,7 @@ def test_settings_attachments_users_and_singapore_report():
         assert detail['attachments'][1]['entry_id'] is not None
         bad={**body,'attachments':[{'filename':'bad.txt','data':'not base64!'}]}
         count=len(admin.get('/api/tickets').json())
-        assert post(requester,'/tickets',bad).status_code==422
+        assert post(requester,'/tickets',bad).status_code==403
         assert len(admin.get('/api/tickets').json())==count
         with Session(engine) as session:
             t=session.get(Ticket,tid);t.created_at=datetime(2026,9,30,16,0);session.commit()

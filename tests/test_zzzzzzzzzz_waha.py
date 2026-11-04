@@ -19,7 +19,7 @@ def test_waha_fault_transaction_delivery_retry_and_delete(monkeypatch):
   config=admin.get('/api/settings').json()
   body=dict(title='New WhatsApp fault',description='Test issue description',category=config['categories'][0],domain=config['domains'][0])
   # Invalid attachments must roll back the ticket and its queue item together.
-  bad=requester.post('/api/tickets',json={**body,'attachments':[dict(filename='bad.txt',data='invalid base64!')]},headers=H)
+  bad=admin.post('/api/tickets',json={**body,'attachments':[dict(filename='bad.txt',data='invalid base64!')]},headers=H)
   assert bad.status_code==422
   with Session(engine) as s:assert s.scalar(select(func.count()).select_from(WhatsAppOutbox))==0
   response=requester.post('/api/tickets',json=body,headers=H);assert response.status_code==200

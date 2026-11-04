@@ -29,5 +29,32 @@ def test_visibility_rich_tables_and_private_attachments():
   public=infra.post('/api/tickets',json={**body,'visibility':'Public'},headers=H).json()
   assert requester.get('/api/tickets/'+str(public['id'])).status_code==200
   assert requester.post('/api/tickets',json={**body,'visibility':'Internal'},headers=H).status_code==403
-  own=requester.post('/api/tickets',json=body,headers=H).json();assert own['visibility']=='Public'
+  assert requester.post('/api/tickets',json=body,headers=H).status_code==403
+  own=requester.post('/api/tickets',json={**body,'attachments':[]},headers=H).json();assert own['visibility']=='Public'
   assert admin.post(f'/api/tickets/{id}/delete',json={},headers=H).status_code==200
+
+
+def test_shared_requester_reply_preserves_owner_workflow_and_private_boundary():
+ with TestClient(app) as admin,TestClient(app) as owner,TestClient(app) as peer:
+  login(admin,'admin@example.com');login(owner,'tm@example.com');login(peer,'other@example.com')
+  cfg=admin.get('/api/settings').json()
+  body=dict(title='Shared requester conversation',description='Public issue',category=cfg['categories'][0],domain=cfg['domains'][0])
+  before=len(owner.get('/api/tickets').json())
+  assert owner.post('/api/tickets',json={**body,'attachments':[dict(filename='file.txt',data=base64.b64encode(b'data').decode())]},headers=H).status_code==403
+  assert len(owner.get('/api/tickets').json())==before
+  ticket=owner.post('/api/tickets',json=body,headers=H).json();p='/api/tickets/'+str(ticket['id'])
+  assert admin.post(p+'/actions',json=dict(action='information',text='Need owner confirmation'),headers=H).status_code==200
+  reply=peer.post(p+'/actions',json=dict(action='note',text='I have the same issue',attachments=[dict(filename='reply.txt',data=base64.b64encode(b'peer evidence').decode())]),headers=H)
+  assert reply.status_code==200 and reply.json()['status']=='Additional Information Requested'
+  detail=owner.get(p).json()
+  assert any(e['text']=='I have the same issue' and e['author']=='other@example.com' for e in detail['entries'])
+  assert peer.get('/api/attachments/'+str(detail['attachments'][0]['id'])).content==b'peer evidence'
+  for action in ['cancel','close','assign']:
+   assert peer.post(p+'/actions',json=dict(action=action,text='Not owner'),headers=H).status_code==403
+  assert owner.post(p+'/actions',json=dict(action='note',text='Owner response'),headers=H).json()['status']=='In Progress'
+  assert admin.post(p+'/actions',json=dict(action='resolve',text='Fixed'),headers=H).status_code==200
+  assert peer.post(p+'/actions',json=dict(action='note',text='Thank you'),headers=H).json()['status']=='Resolved, Pending Confirmation'
+  assert owner.post(p+'/actions',json=dict(action='close',text='Verified'),headers=H).status_code==200
+  assert peer.post(p+'/actions',json=dict(action='note',text='After close'),headers=H).status_code==409
+  private=admin.post('/api/tickets',json={**body,'visibility':'Internal'},headers=H).json()
+  assert peer.post('/api/tickets/'+str(private['id'])+'/actions',json=dict(action='note',text='Private attempt'),headers=H).status_code==404

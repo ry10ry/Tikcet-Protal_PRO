@@ -19,3 +19,9 @@ Promoted UAT commit `5a8a54d` after user acceptance. Successful Fault Engineer a
 Validation: 35 SQLite integration tests passed, including PRO bootstrap, assignment rollback, message contents, group/session reuse, delivery, reassignment, disabled integration and deletion cleanup. WAHA delivery is mocked in automated tests; the user confirmed the UAT test passed. Production host deployment and actual group receipt require updating the server and restarting web/scheduler. Version and the initial v0.1 tag remain unchanged.
 
 Existing installations: back up the database, pull this repository's main branch, then use the existing Compose configuration to rebuild and recreate web and scheduler. Preserve the current .env, external volumes and WAHA settings. Do not rerun first-install setup or recreate volumes. See WHATSAPP-WAHA.md for the deployment command.
+
+## Approved shared Requester replies and Fault filters — 4 November 2026 (version remains 0.1)
+
+Promoted user-tested UAT commit `3263f27`: Requesters may reply to other Requesters' Public Fault Tickets; Internal visibility and owner-only cancel/close permissions remain enforced. Added Assigned To and staff Visibility filters, with status/Engineer text search. Requester creation attachments are removed in the UI and rejected by the API; reply and staff attachments remain supported.
+
+Validation: 36 SQLite integration tests and JavaScript filter checks passed. PRO configuration, branding, version and initial v0.1 tag are preserved. No database migration is required. Production server deployment is a separate operator action; see FAULT-PROD-UPDATE-20261104.md for update and acceptance steps.

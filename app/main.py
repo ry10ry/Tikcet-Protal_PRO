@@ -336,6 +336,8 @@ def create_ticket(body: TicketCreate, user: User=Depends(current_user), session:
     if body.severity not in config['severities'] or body.category not in config['categories'] or body.domain not in config['domains']:
         raise HTTPException(422,'Select a valid category, domain and severity')
     from app.fault_content import FaultContent,sanitize
+    if user.role=='requester' and body.attachments:
+        raise HTTPException(403,'Requesters cannot upload attachments when reporting a fault')
     visibility=body.visibility or ('Public' if user.role=='requester' else 'Internal')
     if visibility not in ('Public','Internal'):raise HTTPException(422,'Select Public or Internal visibility')
     if user.role=='requester' and visibility!='Public':raise HTTPException(403,'Only Infra staff can create internal tickets')
@@ -377,8 +379,8 @@ def action(ticket_id:int, body:Action, user:User=Depends(current_user), session:
     session.refresh(ticket,with_for_update=True)
     from app.archive import writable
     writable(session,'FAULT',ticket.id)
-    if user.role == 'requester' and ticket.requester_id != user.id:
-        raise HTTPException(403, 'You can only update tickets you reported')
+    if user.role == 'requester' and ticket.requester_id != user.id and body.action != 'note':
+        raise HTTPException(403, 'You can only manage tickets you reported')
     closed_infra_comment = ticket.status == 'Closed' and user.role == 'infra' and body.action == 'note'
     if ticket.status == 'Closed' and user.role == 'infra' and (body.action != 'note' or body.severity is not None or body.assignee_id is not None or body.minutes):
         raise HTTPException(403, 'Closed tickets allow comments only')
@@ -409,7 +411,7 @@ def action(ticket_id:int, body:Action, user:User=Depends(current_user), session:
         if not text and not severity_changed:
             raise HTTPException(422,'A comment is required')
         label = settings(session)[role_key][a]['label']
-        if user.role == 'requester' and ticket.status in ('Additional Information Requested','Resolved, Pending Confirmation'):
+        if user.role == 'requester' and ticket.requester_id == user.id and ticket.status in ('Additional Information Requested','Resolved, Pending Confirmation'):
             awaiting_confirmation=ticket.status=='Resolved, Pending Confirmation'
             ticket.status = 'In Progress'
             if awaiting_confirmation:

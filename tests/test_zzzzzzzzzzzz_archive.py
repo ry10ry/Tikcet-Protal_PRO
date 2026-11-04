@@ -21,7 +21,8 @@ def test_complete_offline_archives_verified_cleanup_and_reports(tmp_path,monkeyp
  with TestClient(app) as admin,TestClient(app) as requester:
   login(admin,'admin@example.com');login(requester,'tm@example.com')
   cfg=admin.get('/api/settings').json()
-  fault=requester.post('/api/tickets',json=dict(title='Offline historical fault',description='Full fault content',category=cfg['categories'][0],domain=cfg['domains'][0],attachments=[dict(filename='Screenshot.png',data=base64.b64encode(PNG).decode())]),headers=H).json();fp='/api/tickets/'+str(fault['id'])
+  fault=requester.post('/api/tickets',json=dict(title='Offline historical fault',description='Full fault content',category=cfg['categories'][0],domain=cfg['domains'][0],attachments=[]),headers=H).json();fp='/api/tickets/'+str(fault['id'])
+  assert requester.post(fp+'/actions',json=dict(action='note',text='Historical screenshot',attachments=[dict(filename='Screenshot.png',data=base64.b64encode(PNG).decode())]),headers=H).status_code==200
   admin.post(fp+'/actions',json=dict(action='assign'),headers=H)
   admin.post(fp+'/actions',json=dict(action='resolve',text='Historical resolution'),headers=H)
   requester.post(fp+'/actions',json=dict(action='close',text='Confirmed resolved'),headers=H)
