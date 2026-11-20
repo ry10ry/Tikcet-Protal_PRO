@@ -201,7 +201,9 @@ def view_ticket(session, user, ticket_id):
     return ticket
 
 def record(session, ticket, user_id, kind, text, minutes=0):
-    session.add(Entry(ticket_id=ticket.id, user_id=user_id, kind=kind, text=text, minutes=minutes))
+    entry = Entry(ticket_id=ticket.id, user_id=user_id, kind=kind, text=text, minutes=minutes)
+    session.add(entry)
+    return entry
     ticket.updated_at = now()
 
 def notify(session, ticket, text, recipient_ids):
@@ -467,7 +469,10 @@ def action(ticket_id:int, body:Action, user:User=Depends(current_user), session:
                 ticket.resolved_at = now()
         else:
             raise HTTPException(422,'Unknown action')
-        record(session,ticket,user.id,'Status',ticket.status+': '+text)
+        entry = record(session,ticket,user.id,'Status',ticket.status+': '+text)
+        if a == 'assign' or entry.text.startswith(ASSIGNMENT_PREFIX):
+            session.flush()
+            session.add(FaultAssignment(entry_id=entry.id, engineer_id=assignee.id if a == 'assign' else None))
     recipients = [ticket.requester_id] + ([ticket.assignee_id] if ticket.assignee_id else [u.id for u in session.scalars(select(User).where(User.role.in_(['infra','infra_tl','infra_manager','admin'])))])
     notify(session,ticket,'Ticket updated: '+ticket.status,[uid for uid in recipients if uid != user.id])
     session.flush()
@@ -666,3 +671,6 @@ from app.archive import register as register_archive
 register_archive(app)
 
 from app.fault_content import FaultContent
+
+from app.fault_reports import ASSIGNMENT_PREFIX, FaultAssignment, register_fault_reports
+register_fault_reports(app)

@@ -29,3 +29,16 @@ button.stat{text-align:left;font-weight:400}.sInprogress,.sInProgress{background
 @media(max-width:650px){#createDialog{padding:16px}#faultDescriptionEditor{min-height:220px}}
 
 #faultDescriptionEditor[data-empty="true"]::before{content:attr(data-placeholder);color:#6b7280;pointer-events:none;float:left;height:0;white-space:normal}
+
+/* Monthly Fault Ticket reporting */
+.fault-report-panel{max-width:960px;margin-bottom:20px}
+.fault-report-panel h2{margin-top:0}
+.fault-report-actions{display:flex;gap:10px;flex-wrap:wrap}
+.fault-report-scroll{overflow-x:auto}
+.fault-report-scroll canvas{display:block;width:100%;min-width:620px;height:auto}
+.fault-report-scroll table{width:100%;border-collapse:collapse}
+.fault-report-scroll caption{text-align:left;padding:8px 0;color:#405475}
+.fault-report-scroll th,.fault-report-scroll td{padding:9px 12px;border-bottom:1px solid #dce4f2;text-align:right}
+.fault-report-scroll th:first-child{text-align:left}
+.fault-report-scroll tbody th{font-weight:normal}
+.fault-report-scroll tfoot{font-weight:bold}
