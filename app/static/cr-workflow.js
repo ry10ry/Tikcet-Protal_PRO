@@ -3,7 +3,7 @@ const crWorkflowDefaults=[{label:'Review & Support',role:'infra_tl',action:'supp
 const previousAdminClick=$('#navAdmin').onclick;
 $('#navAdmin').onclick=async function(){
  await previousAdminClick();
- if(me.role!=='admin'||!$('#settingsForm'))return;
+ if(me.role!=='admin'||!requestEnabled('cr')||!$('#settingsForm'))return;
  try{
   const saved=await api('/cr-workflow');let stages=saved.stages.map(s=>({...s}));
   const panel=document.createElement('section');panel.className='panel settings-panel';panel.style.marginTop='24px';

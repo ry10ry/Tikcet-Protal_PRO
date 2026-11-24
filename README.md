@@ -50,6 +50,18 @@ docker compose -f compose.yaml -f compose.override.yaml -f compose.ssl.yaml up -
 
 不要用新的包覆盖本机 `.env`、`ssl/certs`、`MOMCC_Archive`、`logs`；不要对已运行系统重新执行首次安装。先在 UAT 测试，再在本仓库发布新标签。GitHub 默认分支 main 包含已批准的最新更新；首版标签 v0.1 保留初次发布快照，不移动旧标签；界面及 `/api/health` 显示 PROD v0.1。`/api/health` 同时检查数据库连接。它不显示凭证或业务数据。
 
+## 暂停或恢复 Change Request 和 Service Request
+
+在 PROD 服务器现有的 `.env` 文件中设置：
+
+```dotenv
+CHANGE_REQUEST_ENABLED=false
+SERVICE_REQUEST_ENABLED=false
+```
+
+两个开关可独立设为 `true` 恢复。未设置时默认开启。更新代码并使用现有 Compose 配置重建
+web 后生效。暂停会保留已有请求、Workflow 设置、审批历史、附件和未读通知。
+
 ## 独立存储和备份
 
 | 项目 | PROD 配置 |

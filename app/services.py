@@ -4,7 +4,7 @@ from datetime import datetime,date
 from zoneinfo import ZoneInfo
 from typing import Literal
 from urllib.parse import quote
-from fastapi import Depends,HTTPException
+from fastapi import APIRouter, Depends,HTTPException
 from fastapi.responses import Response
 from pydantic import BaseModel,Field
 from sqlalchemy import Column,Integer,String,Text,DateTime,ForeignKey,LargeBinary,Boolean,select,update,delete
@@ -106,19 +106,21 @@ def image_type(data):
     if data[:4]==b'RIFF' and data[8:12]==b'WEBP':return 'image/webp'
     return 'application/octet-stream'
 def register_services(app):
-    @app.get('/api/services/notifications')
+    from app.request_features import require_request
+    router = APIRouter(dependencies=[Depends(lambda: require_request('sr'))])
+    @router.get('/api/services/notifications')
     def notifications(u:User=Depends(current_user),s:Session=Depends(db)):
         staff(u)
         return [dict(id=n.id,sr_id=n.sr_id,text=n.text,read=bool(n.read_at),created_at=n.created_at) for n in s.scalars(select(SRNotification).where(SRNotification.user_id==u.id).order_by(SRNotification.id.desc()).limit(100))]
-    @app.post('/api/services/notifications/read',dependencies=[Depends(write_guard)])
+    @router.post('/api/services/notifications/read',dependencies=[Depends(write_guard)])
     def read_notifications(u:User=Depends(current_user),s:Session=Depends(db)):
         staff(u)
         s.execute(update(SRNotification).where(SRNotification.user_id==u.id,SRNotification.read_at==None).values(read_at=now()));s.commit();return {'ok':True}
-    @app.get('/api/services')
+    @router.get('/api/services')
     def listing(u:User=Depends(current_user),s:Session=Depends(db)):
         staff(u);rows=s.scalars(select(ServiceRequest).order_by(ServiceRequest.id.desc())).all()
         return dict(items=[serialize(s,r) for r in rows],counts={'Submitted SR':sum(r.first_submitted_at is not None for r in rows),'Pending Approval':sum(r.status=='Pending Approval' for r in rows),'Total SR':len(rows)})
-    @app.post('/api/services',dependencies=[Depends(write_guard)])
+    @router.post('/api/services',dependencies=[Depends(write_guard)])
     def create(body:Create,u:User=Depends(current_user),s:Session=Depends(db)):
         staff(u);day=body.sr_date.strftime('%Y%m%d')
         if s.bind.dialect.name=='mysql':
@@ -129,10 +131,10 @@ def register_services(app):
             s.execute(insert(SRSequence).values(day=day,value=0).on_conflict_do_nothing())
         s.execute(update(SRSequence).where(SRSequence.day==day).values(value=SRSequence.value+1));seq=s.scalar(select(SRSequence.value).where(SRSequence.day==day))
         r=ServiceRequest(number=f'SR#MOMCC-{day}-{seq:02d}',owner_id=u.id);s.add(r);s.flush();audit(s,r,u,'created');s.commit();return serialize(s,r,True)
-    @app.get('/api/services/{id}')
+    @router.get('/api/services/{id}')
     def detail(id:int,u:User=Depends(current_user),s:Session=Depends(db)):
         staff(u);return serialize(s,get_sr(s,id),True)
-    @app.get('/api/services/{id}/customer-email')
+    @router.get('/api/services/{id}/customer-email')
     def customer_email(id:int,u:User=Depends(current_user),s:Session=Depends(db)):
         staff(u)
         from app.sr_email import current_approval,draft_message
@@ -145,21 +147,21 @@ def register_services(app):
         attachments=[SimpleNamespace(id=f.id,filename=f.filename,mime=f.mime,data=file_bytes(s,'SR',f.id,f.data)) for f in attachments]
         payload,filename=draft_message(r,submission,approval,attachments,s.get(User,approval.actor_id),s.get(User,r.owner_id))
         return Response(payload,media_type='message/rfc822',headers={'Content-Disposition':"attachment; filename*=UTF-8''"+quote(filename,safe=''),'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'})
-    @app.get('/api/services/{id}/files/{file_id}')
+    @router.get('/api/services/{id}/files/{file_id}')
     def download(id:int,file_id:int,preview:bool=False,u:User=Depends(current_user),s:Session=Depends(db)):
         staff(u);get_sr(s,id);f=s.get(SRFile,file_id)
         if not f or f.sr_id!=id:raise HTTPException(404,'Attachment not found')
         inline=preview and f.mime.startswith('image/')
         from app.archive import file_bytes
         return Response(file_bytes(s,'SR',f.id,f.data),media_type=f.mime if inline else 'application/octet-stream',headers={'Content-Disposition':('inline' if inline else 'attachment')+"; filename*=UTF-8''"+quote(f.filename,safe=''),'X-Content-Type-Options':'nosniff','Cache-Control':'no-store'})
-    @app.post('/api/services/{id}/delete',dependencies=[Depends(write_guard)])
+    @router.post('/api/services/{id}/delete',dependencies=[Depends(write_guard)])
     def remove(id:int,b:Delete,u:User=Depends(current_user),s:Session=Depends(db)):
         if u.role!='admin':raise HTTPException(403,'Administrator access required')
         r=get_sr(s,id)
         mutate(s,r,b.version)
         for model in [SRNotification,SRHistory,SRFile]:s.execute(delete(model).where(model.sr_id==id))
         s.delete(r);s.commit();return {'ok':True}
-    @app.post('/api/services/{id}/save',dependencies=[Depends(write_guard)])
+    @router.post('/api/services/{id}/save',dependencies=[Depends(write_guard)])
     def save(id:int,b:Save,u:User=Depends(current_user),s:Session=Depends(db)):
         staff(u);r=get_sr(s,id)
         if u.id!=r.owner_id and u.role!='admin':raise HTTPException(403,'Only the submitting Infra or Admin can edit')
@@ -181,7 +183,7 @@ def register_services(app):
             if f.id in b.remove_file_ids:f.active=False
         for name,data in decoded:s.add(SRFile(sr_id=id,filename=name,data=data,mime=image_type(data)))
         s.flush();audit(s,r,u,'saved');s.commit();return serialize(s,r,True)
-    @app.post('/api/services/{id}/actions',dependencies=[Depends(write_guard)])
+    @router.post('/api/services/{id}/actions',dependencies=[Depends(write_guard)])
     def action(id:int,b:Action,u:User=Depends(current_user),s:Session=Depends(db)):
         staff(u);r=get_sr(s,id)
         if r.version!=b.version:raise HTTPException(409,'SR changed. Reload before acting.')
@@ -201,3 +203,5 @@ def register_services(app):
         mutate(s,r,b.version,**values);audit(s,r,u,b.action,b.comment.strip())
         if recipients:notify(s,r,recipients,f'{b.action.capitalize()}: {r.subject}'+(' — '+b.comment.strip()[:200] if b.comment else ''))
         s.commit();return serialize(s,r,True)
+
+    app.include_router(router)

@@ -44,5 +44,3 @@ async function openCR(id){
 }
 async function saveCR(){const uploads=[];for(const input of document.querySelectorAll('[data-upload-kind]')){const file=input.files[0];if(!file)continue;if(file.size>10*1024*1024)throw Error('Maximum 10 MB per document');const data=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result).split(',')[1]);reader.onerror=()=>reject(Error('Cannot read file'));reader.readAsDataURL(file)});uploads.push({kind:input.dataset.uploadKind,filename:file.name,data})}crCurrent=await api('/changes/'+crCurrent.id+'/save',{version:crCurrent.version,content:{description:$('#crForm').elements.description.value,background:$('#crForm').elements.background.value,scope:$('#crForm').elements.scope.value},uploads});document.querySelectorAll('[data-upload-kind]').forEach(i=>i.value='');}
 $('#navChanges').onclick=()=>renderChanges().catch(e=>toast(e.message));
-const originalStart=start;start=async function(){await originalStart();$('#navChanges').hidden=!crLabels[me.role]};
-setInterval(()=>{$('#navChanges').hidden=!me||!crLabels[me.role]},500);

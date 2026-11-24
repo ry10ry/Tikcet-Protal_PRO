@@ -8,7 +8,7 @@ from pathlib import Path
 from datetime import datetime, date
 from zoneinfo import ZoneInfo
 from typing import Literal
-from fastapi import Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
 from urllib.parse import quote
 from app.cr_documents import schema, names, validate_forms, export_doc, export_xlsx
@@ -191,9 +191,11 @@ def mutate(session, row, version, **values):
 
 
 def register_changes(app):
+    from app.request_features import require_request
+    router = APIRouter(dependencies=[Depends(lambda: require_request('cr'))])
     from app.cr_workflow import configuration,stages_for,current_stage,stage_status,register_workflow
-    register_workflow(app)
-    @app.get('/api/changes/{cr_id}/istd-email')
+    register_workflow(router)
+    @router.get('/api/changes/{cr_id}/istd-email')
     def istd_email(cr_id:int,user:User=Depends(current_user),session:Session=Depends(db)):
         staff(user)
         from app.cr_email import current_approval_cycle,draft_message,approval_decisions
@@ -213,12 +215,12 @@ def register_changes(app):
         payload,filename=draft_message(row,submission,support,approval,files,identities,decisions)
         return Response(payload,media_type='message/rfc822',headers={'Content-Disposition':"attachment; filename*=UTF-8''"+quote(filename,safe=''),'Cache-Control':'no-store'})
 
-    @app.get('/api/changes/forms/schema')
+    @router.get('/api/changes/forms/schema')
     def form_schema(user: User=Depends(current_user)):
         staff(user)
         return schema()
 
-    @app.get('/api/changes/{cr_id}/documents/{kind}')
+    @router.get('/api/changes/{cr_id}/documents/{kind}')
     def download_document(cr_id: int, kind: str, user: User=Depends(current_user), session: Session=Depends(db)):
         staff(user)
         if kind not in ('change_form','runbook','checklist'):
@@ -233,7 +235,7 @@ def register_changes(app):
         from app.archive import file_bytes
         return Response(file_bytes(session,'CR',file.id,file.data),media_type=mime,headers={'Content-Disposition':"attachment; filename*=UTF-8''"+quote(filename,safe=''), 'Cache-Control':'no-store'})
 
-    @app.get('/api/changes/{cr_id}/templates/{kind}')
+    @router.get('/api/changes/{cr_id}/templates/{kind}')
     def template_download(cr_id:int,kind:str,user:User=Depends(current_user),session:Session=Depends(db)):
         staff(user)
         if kind not in ('change_form','runbook','checklist'):raise HTTPException(404,'Unknown template')
@@ -241,7 +243,7 @@ def register_changes(app):
         payload=export_doc(data,[]) if kind=='change_form' else export_xlsx(data,kind)
         return Response(payload,media_type='application/octet-stream',headers={'Content-Disposition':"attachment; filename*=UTF-8''"+quote(data['document_names'][kind],safe=''),'Cache-Control':'no-store'})
 
-    @app.get('/api/changes/{cr_id}/files/{file_id}')
+    @router.get('/api/changes/{cr_id}/files/{file_id}')
     def historic_download(cr_id:int,file_id:int,user:User=Depends(current_user),session:Session=Depends(db)):
         staff(user)
         read_cr(session,cr_id)
@@ -250,7 +252,7 @@ def register_changes(app):
         from app.archive import file_bytes
         return Response(file_bytes(session,'CR',file.id,file.data),media_type='application/octet-stream',headers={'Content-Disposition':"attachment; filename*=UTF-8''"+quote(file.filename,safe=''),'Cache-Control':'no-store'})
 
-    @app.post('/api/changes/{cr_id}/delete',dependencies=[Depends(write_guard)])
+    @router.post('/api/changes/{cr_id}/delete',dependencies=[Depends(write_guard)])
     def delete_change(cr_id:int,body:CRAction,user:User=Depends(current_user),session:Session=Depends(db)):
         if user.role!='admin':raise HTTPException(403,'Administrator access required')
         row=read_cr(session,cr_id)
@@ -262,7 +264,7 @@ def register_changes(app):
         session.commit()
         return {'ok':True}
 
-    @app.get('/api/changes')
+    @router.get('/api/changes')
     def list_changes(user: User=Depends(current_user), session: Session=Depends(db)):
         staff(user)
         rows = session.scalars(select(ChangeRequest).order_by(ChangeRequest.id.desc())).all()
@@ -271,7 +273,7 @@ def register_changes(app):
         counts['Total CR'] = len(rows)
         return {'counts': counts, 'items': [serialize_cr(r, session) for r in rows]}
 
-    @app.post('/api/changes', dependencies=[Depends(write_guard)])
+    @router.post('/api/changes', dependencies=[Depends(write_guard)])
     def create_change(body: CRCreate, user: User=Depends(current_user), session: Session=Depends(db)):
         staff(user)
         day = body.cr_date.strftime('%Y%m%d')
@@ -293,12 +295,12 @@ def register_changes(app):
         session.commit()
         return serialize_cr(row, session, True)
 
-    @app.get('/api/changes/{cr_id}')
+    @router.get('/api/changes/{cr_id}')
     def get_change(cr_id: int, user: User=Depends(current_user), session: Session=Depends(db)):
         staff(user)
         return serialize_cr(read_cr(session, cr_id), session, True)
 
-    @app.post('/api/changes/{cr_id}/istd-evidence', dependencies=[Depends(write_guard)])
+    @router.post('/api/changes/{cr_id}/istd-evidence', dependencies=[Depends(write_guard)])
     def upload_istd_evidence(cr_id: int, body: CREvidence, user: User=Depends(current_user), session: Session=Depends(db)):
         staff(user)
         row=read_cr(session,cr_id)
@@ -337,7 +339,7 @@ def register_changes(app):
         session.commit()
         return serialize_cr(row,session,True)
 
-    @app.post('/api/changes/{cr_id}/save', dependencies=[Depends(write_guard)])
+    @router.post('/api/changes/{cr_id}/save', dependencies=[Depends(write_guard)])
     def save_change(cr_id: int, body: CRSave, user: User=Depends(current_user), session: Session=Depends(db)):
         staff(user)
         row = read_cr(session, cr_id)
@@ -381,7 +383,7 @@ def register_changes(app):
         session.commit()
         return serialize_cr(row, session, True)
 
-    @app.post('/api/changes/{cr_id}/actions', dependencies=[Depends(write_guard)])
+    @router.post('/api/changes/{cr_id}/actions', dependencies=[Depends(write_guard)])
     def action_change(cr_id: int, body: CRAction, user: User=Depends(current_user), session: Session=Depends(db)):
         staff(user)
         row = read_cr(session, cr_id)
@@ -441,3 +443,5 @@ def register_changes(app):
         notify_change(session,row,user,body.action,body.reason.strip())
         session.commit()
         return serialize_cr(row, session, True)
+
+    app.include_router(router)

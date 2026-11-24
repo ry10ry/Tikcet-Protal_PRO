@@ -8,6 +8,7 @@ import io
 import os
 import secrets
 import logging
+from app.request_features import REQUEST_FLAGS, request_enabled
 from app.logging_support import configure_logging,RequestLoggingMiddleware
 configure_logging()
 from contextlib import asynccontextmanager
@@ -276,7 +277,9 @@ def logout(request: Request, response: Response, session: Session=Depends(db)):
 
 @app.get('/api/me')
 def me(user: User=Depends(current_user)):
-    return {'id':user.id,'name':user.name,'role':user.role}
+    return {'id':user.id,'name':user.name,'role':user.role,
+            'request_modules': {kind: user.role != 'requester' and request_enabled(kind)
+                                for kind in REQUEST_FLAGS}}
 
 @app.get('/api/users')
 def users(user: User=Depends(current_user), session: Session=Depends(db)):

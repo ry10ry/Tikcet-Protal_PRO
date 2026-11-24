@@ -6,6 +6,7 @@ from fastapi.responses import Response
 from sqlalchemy import select,update
 from sqlalchemy.orm import Session
 from app.main import User,db,current_user,staff,write_guard,now
+from app.request_features import request_enabled, require_request
 from app.changes import ChangeRequest,CRHistory,CRNotification,CRFile
 from app.services import ServiceRequest,SRHistory,SRNotification,SRFile
 
@@ -24,18 +25,22 @@ def register_internal_views(app):
     def notifications(u:User=Depends(current_user),s:Session=Depends(db)):
         staff(u);items=[]
         for model,kind,key in [(CRNotification,'CR','cr_id'),(SRNotification,'SR','sr_id')]:
+            if not request_enabled(kind.lower()):continue
             for n in s.scalars(select(model).where(model.user_id==u.id).order_by(model.id.desc()).limit(100)):
                 items.append(dict(id=f'{kind}-{n.id}',kind=kind,record_id=getattr(n,key),text=n.text,created_at=n.created_at,read=bool(n.read_at)))
         return sorted(items,key=lambda n:(n['created_at'],n['id']),reverse=True)
     @app.post('/api/internal/notifications/read',dependencies=[Depends(write_guard)])
     def read(u:User=Depends(current_user),s:Session=Depends(db)):
         staff(u)
-        for model in [CRNotification,SRNotification]:s.execute(update(model).where(model.user_id==u.id,model.read_at==None).values(read_at=now()))
+        for kind, model in [('cr', CRNotification), ('sr', SRNotification)]:
+            if request_enabled(kind):
+                s.execute(update(model).where(model.user_id==u.id, model.read_at.is_(None)).values(read_at=now()))
         s.commit();return {'ok':True}
     @app.get('/api/internal/reports/{kind}')
     def report(kind:str,month:str,u:User=Depends(current_user),s:Session=Depends(db)):
         staff(u)
         if kind not in ('cr','sr'):raise HTTPException(404,'Unknown report type')
+        require_request(kind)
         start,end=month_bounds(month);output=io.StringIO();writer=csv.writer(output)
         model=ChangeRequest if kind=='cr' else ServiceRequest
         history_model=CRHistory if kind=='cr' else SRHistory
